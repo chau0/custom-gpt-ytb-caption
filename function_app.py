@@ -4,6 +4,7 @@ import azure.functions as func
 import logging
 from youtube_transcript_api import YouTubeTranscriptApi
 from youtube_transcript_api._errors import TranscriptsDisabled, VideoUnavailable, NoTranscriptFound
+from youtube_transcript_api.proxies import WebshareProxyConfig
 from urllib.parse import urlparse, parse_qs
 
 # Default maximum characters per chunk (override via environment variable)
@@ -85,8 +86,24 @@ def func_ytb_caption(req: func.HttpRequest) -> func.HttpResponse:
         start_index = int(body.get('start_index', 0))
         languages_param = body.get('language')
         
-        # Initialize YouTube Transcript API with modern v2 approach
-        ytt_api = YouTubeTranscriptApi()
+        # Initialize YouTube Transcript API with modern v2 approach and optional proxy
+        proxy_config = None
+        use_proxy = os.getenv("USE_PROXY", "0") == "1"
+        
+        if use_proxy:
+            proxy_username = os.getenv("WEBSHARE_PROXY_USERNAME")
+            proxy_password = os.getenv("WEBSHARE_PROXY_PASSWORD")
+            
+            if not proxy_username or not proxy_password:
+                logging.warning("Proxy enabled but credentials missing. Proceeding without proxy.")
+            else:
+                proxy_config = WebshareProxyConfig(
+                    proxy_username=proxy_username,
+                    proxy_password=proxy_password
+                )
+                logging.info("Using Webshare proxy for YouTube API requests")
+        
+        ytt_api = YouTubeTranscriptApi(proxy_config=proxy_config)
         
         # Get available transcripts for the video
         transcript_list = ytt_api.list(video_id)
