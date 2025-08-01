@@ -14,7 +14,6 @@ DEFAULT_MAX_CHUNKS = int(os.getenv("MAX_CHUNKS", "5"))
 
 app = func.FunctionApp(http_auth_level=func.AuthLevel.FUNCTION)
 
-
 def extract_video_id(url: str) -> str:
     """Extract video ID from YouTube URL."""
     if not url:
@@ -53,7 +52,7 @@ def paginate_chunks(chunks: list[dict], start: int, max_chunks: int) -> dict:
     return {"chunks": page, "next_index": next_index, "total_chunks": total}
 
 
-@app.route(route="func_ytb_caption")
+@app.route(route="func_ytb_caption", methods=["POST", "OPTIONS"], auth_level=func.AuthLevel.FUNCTION)
 def func_ytb_caption(req: func.HttpRequest) -> func.HttpResponse:
     """Azure Function to retrieve YouTube captions with modern API."""
     logging.info('YouTube caption function processed a request.')

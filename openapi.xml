@@ -1,0 +1,105 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "YouTube Caption Fetcher",
+    "version": "1.0.0",
+    "description": "Fetches YouTube captions in paginated chunks from an Azure Function."
+  },
+  "servers": [
+    { "url": "https://<YOUR_APP_HOST>" }
+  ],
+  "paths": {
+    "/api/func_ytb_caption": {
+      "post": {
+        "operationId": "get_captions",
+        "summary": "Get YouTube captions (paginated)",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": ["url"],
+                "properties": {
+                  "url": { "type": "string", "description": "YouTube video URL" },
+                  "chunk_size": { "type": "integer", "description": "Max chars per chunk", "default": 5000, "minimum": 1000, "maximum": 10000 },
+                  "max_chunks": { "type": "integer", "description": "Chunks per page", "default": 5, "minimum": 1, "maximum": 10 },
+                  "start_index": { "type": "integer", "description": "Pagination start index", "default": 0, "minimum": 0 },
+                  "language": { "type": "string", "description": "Language code (e.g., 'en', 'ja')"}
+                }
+              },
+              "example": {
+                "url": "https://www.youtube.com/watch?v=dQw4w9WgXcQ",
+                "chunk_size": 5000,
+                "max_chunks": 5,
+                "start_index": 0,
+                "language": "en"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Caption page with chunks",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": ["video_id", "total_characters", "chunks", "total_chunks"],
+                  "properties": {
+                    "video_id": { "type": "string" },
+                    "total_characters": { "type": "integer" },
+                    "selected_language": { "type": "string" },
+                    "selected_language_code": { "type": "string" },
+                    "is_generated": { "type": "boolean" },
+                    "available_languages": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "language": { "type": "string" },
+                          "language_code": { "type": "string" },
+                          "is_generated": { "type": "boolean" },
+                          "is_translatable": { "type": "boolean" },
+                          "translation_languages": {
+                            "type": "array",
+                            "items": { "type": "string" }
+                          }
+                        }
+                      }
+                    },
+                    "chunks": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "required": ["index", "text"],
+                        "properties": {
+                          "index": { "type": "integer" },
+                          "text": { "type": "string" }
+                        }
+                      }
+                    },
+                    "next_index": { "type": ["integer", "null"] },
+                    "total_chunks": { "type": "integer" }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": { "description": "Client error" },
+          "5XX": { "description": "Server error" }
+        },
+        "security": [{ "azureFuncKey": [] }]
+      }
+    }
+  },
+  "components": {
+    "securitySchemes": {
+      "azureFuncKey": {
+        "type": "apiKey",
+        "in": "header",
+        "name": "x-functions-key"
+      }
+    }
+  }
+}
