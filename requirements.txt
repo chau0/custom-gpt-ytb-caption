@@ -3,3 +3,8 @@
 # Manually managing azure-functions-worker may cause unexpected issues
 
 azure-functions
+youtube-transcript-api
+
+# Testing dependencies
+pytest
+pytest-mock
