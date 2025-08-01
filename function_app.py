@@ -12,6 +12,19 @@ DEFAULT_CHUNK_SIZE = int(os.getenv("CHUNK_SIZE", "5000"))
 # Default maximum chunks returned per request (override via environment variable)
 DEFAULT_MAX_CHUNKS = int(os.getenv("MAX_CHUNKS", "5"))
 
+def validate_auth_key(req: func.HttpRequest) -> bool:
+    """Validate the x-functions-key header against environment variable."""
+    expected_key = os.getenv("CUSTOM_AUTH_KEY")
+    if not expected_key:
+        logging.warning("CUSTOM_AUTH_KEY environment variable not set")
+        return False
+    
+    provided_key = req.headers.get("x-functions-key")
+    if not provided_key:
+        return False
+    
+    return provided_key == expected_key
+
 app = func.FunctionApp(http_auth_level=func.AuthLevel.ANONYMOUS)
 
 def extract_video_id(url: str) -> str:
@@ -56,6 +69,21 @@ def paginate_chunks(chunks: list[dict], start: int, max_chunks: int) -> dict:
 def func_ytb_caption(req: func.HttpRequest) -> func.HttpResponse:
     """Azure Function to retrieve YouTube captions with modern API."""
     logging.info('YouTube caption function processed a request.')
+
+    # Handle CORS preflight requests
+    if req.method == "OPTIONS":
+        response = func.HttpResponse(status_code=200)
+        response.headers['Access-Control-Allow-Origin'] = '*'
+        response.headers['Access-Control-Allow-Methods'] = 'POST, OPTIONS'
+        response.headers['Access-Control-Allow-Headers'] = 'Content-Type, x-functions-key'
+        return response
+
+    # Validate authentication for non-OPTIONS requests
+    if not validate_auth_key(req):
+        return func.HttpResponse(
+            json.dumps({"error": "Unauthorized. Valid x-functions-key header required."}),
+            status_code=401, mimetype="application/json"
+        )
 
     try:
         body = req.get_json()
