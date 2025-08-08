@@ -1,9 +1,10 @@
 import os
 import json
 import logging
-from fastapi import FastAPI, HTTPException, Request
+from fastapi import FastAPI, HTTPException, Request, Depends
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
+from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from pydantic import BaseModel
 from typing import Optional, Union, List
 from youtube_transcript_api import YouTubeTranscriptApi
@@ -14,6 +15,11 @@ from urllib.parse import urlparse, parse_qs
 # Configure logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
+
+# Load API key from environment
+API_KEY = os.getenv("API_KEY")
+if not API_KEY:
+    logger.warning("API_KEY environment variable not set. API will run without authentication.")
 
 # Default maximum characters per chunk (override via environment variable)
 DEFAULT_CHUNK_SIZE = int(os.getenv("CHUNK_SIZE", "5000"))
@@ -35,6 +41,22 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+# Security scheme for API key authentication
+security = HTTPBearer()
+
+def verify_api_key(credentials: HTTPAuthorizationCredentials = Depends(security)):
+    """Verify the API key from the Authorization header."""
+    if not API_KEY:
+        # If no API key is configured, skip authentication
+        return True
+    
+    if credentials.credentials != API_KEY:
+        raise HTTPException(
+            status_code=401, 
+            detail="Invalid API key"
+        )
+    return True
+
 class CaptionRequest(BaseModel):
     url: str
     chunk_size: Optional[int] = DEFAULT_CHUNK_SIZE
@@ -47,13 +69,16 @@ def extract_video_id(url: str) -> str:
     if not url:
         return None
     
-    parsed = urlparse(url)
-    if parsed.hostname in ('youtu.be',):
-        return parsed.path.lstrip('/')
-    if parsed.hostname in ('www.youtube.com', 'youtube.com'):
-        params = parse_qs(parsed.query)
-        return params.get('v', [None])[0]
-    return None
+    try:
+        parsed = urlparse(url)
+        if parsed.hostname in ('youtu.be',):
+            return parsed.path.lstrip('/')
+        if parsed.hostname in ('www.youtube.com', 'youtube.com'):
+            params = parse_qs(parsed.query)
+            return params.get('v', [None])[0]
+        return None
+    except Exception:
+        return None
 
 def chunk_text(text: str, size: int) -> list[dict]:
     """Split text into chunks of specified size."""
@@ -83,7 +108,7 @@ async def health_check():
     return {"status": "healthy"}
 
 @app.post("/func_ytb_caption")
-async def get_youtube_caption(request: CaptionRequest):
+async def get_youtube_caption(request: CaptionRequest, _: bool = Depends(verify_api_key)):
     """Retrieve YouTube captions with pagination."""
     logger.info('YouTube caption function processed a request.')
 
@@ -222,18 +247,21 @@ async def get_youtube_caption(request: CaptionRequest):
 
         return payload
 
-    except NoTranscriptFound as e:
-        logger.warning(f"No transcript found for video {video_id}: {str(e)}")
-        raise HTTPException(
-            status_code=404, 
-            detail="No transcript available for this video in the requested language(s)."
-        )
+    except HTTPException:
+        # Re-raise HTTPExceptions as-is
+        raise
     except VideoUnavailable as e:
         logger.warning(f"Video unavailable {video_id}: {str(e)}")
         raise HTTPException(status_code=404, detail="Video is unavailable or private.")
     except TranscriptsDisabled as e:
         logger.warning(f"Transcripts disabled for video {video_id}: {str(e)}")
         raise HTTPException(status_code=403, detail="Transcripts are disabled for this video.")
+    except NoTranscriptFound as e:
+        logger.warning(f"No transcript found for video {video_id}: {str(e)}")
+        raise HTTPException(
+            status_code=404, 
+            detail="No transcript available for this video in the requested language(s)."
+        )
     except ValueError as e:
         logger.error(f"Value error: {str(e)}")
         raise HTTPException(status_code=400, detail=f"Invalid parameter value: {str(e)}")

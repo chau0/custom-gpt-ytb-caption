@@ -40,20 +40,18 @@ build: ## Build the Docker image
 run: ## Run container locally (interactive)
 	@echo "$(GREEN)Running container locally on port $(LOCAL_PORT)$(NC)"
 	docker run --rm -it \
+		--env-file .env \
 		-p $(LOCAL_PORT):$(CONTAINER_PORT) \
 		-e PORT=$(CONTAINER_PORT) \
-		-e CHUNK_SIZE=$(CHUNK_SIZE) \
-		-e MAX_CHUNKS=$(MAX_CHUNKS) \
 		--name $(IMAGE_NAME)-dev \
 		$(IMAGE_NAME)
 
 up: ## Start container in detached mode
 	@echo "$(GREEN)Starting container in background$(NC)"
 	docker run -d \
+		--env-file .env \
 		-p $(LOCAL_PORT):$(CONTAINER_PORT) \
 		-e PORT=$(CONTAINER_PORT) \
-		-e CHUNK_SIZE=$(CHUNK_SIZE) \
-		-e MAX_CHUNKS=$(MAX_CHUNKS) \
 		--name $(IMAGE_NAME)-dev \
 		$(IMAGE_NAME)
 	@echo "$(GREEN)Container started! Access at http://localhost:$(LOCAL_PORT)$(NC)"
@@ -128,7 +126,7 @@ deploy: build-push ## Deploy to Google Cloud Run
 up-compose: ## Start services with docker-compose
 	@if [ -f docker-compose.yml ]; then \
 		echo "$(GREEN)Starting services with docker-compose$(NC)"; \
-		docker-compose up -d; \
+		docker-compose --env-file .env up -d; \
 	else \
 		echo "$(RED)docker-compose.yml not found$(NC)"; \
 	fi
