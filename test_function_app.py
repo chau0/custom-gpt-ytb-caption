@@ -173,10 +173,72 @@ class TestPaginateChunks:
 class TestFuncYtbCaption:
     """Test the main Azure Function."""
     
-    def create_mock_request(self, body_dict):
+    @patch.dict('os.environ', {'API_KEY': 'test-api-key'})
+    def test_func_ytb_caption_missing_api_key(self):
+        """Test missing API key returns 401."""
+        request_body = {"url": "https://www.youtube.com/watch?v=dQw4w9WgXcQ"}
+        mock_req = self.create_mock_request(request_body, headers={})
+        
+        response = func_ytb_caption(mock_req)
+        
+        assert response.status_code == 401
+        response_data = json.loads(response.get_body())
+        assert "API key is required" in response_data["error"]
+    
+    @patch.dict('os.environ', {'API_KEY': 'test-api-key'})
+    def test_func_ytb_caption_invalid_api_key(self):
+        """Test invalid API key returns 401."""
+        request_body = {"url": "https://www.youtube.com/watch?v=dQw4w9WgXcQ"}
+        mock_req = self.create_mock_request(request_body, headers={"X-API-Key": "wrong-key"})
+        
+        response = func_ytb_caption(mock_req)
+        
+        assert response.status_code == 401
+        response_data = json.loads(response.get_body())
+        assert "Invalid API key" in response_data["error"]
+    
+    @patch.dict('os.environ', {})
+    def test_func_ytb_caption_api_key_not_configured(self):
+        """Test when API_KEY environment variable is not set."""
+        request_body = {"url": "https://www.youtube.com/watch?v=dQw4w9WgXcQ"}
+        mock_req = self.create_mock_request(request_body)
+        
+        response = func_ytb_caption(mock_req)
+        
+        assert response.status_code == 500
+        response_data = json.loads(response.get_body())
+        assert "API key not configured" in response_data["error"]
+    
+    @patch.dict('os.environ', {'API_KEY': 'test-api-key'})
+    def test_func_ytb_caption_options_request(self):
+        """Test CORS preflight OPTIONS request."""
+        mock_req = self.create_mock_request({}, method="OPTIONS")
+        
+        response = func_ytb_caption(mock_req)
+        
+        assert response.status_code == 200
+        assert response.headers['Access-Control-Allow-Origin'] == '*'
+        assert 'POST' in response.headers['Access-Control-Allow-Methods']
+        assert 'X-API-Key' in response.headers['Access-Control-Allow-Headers']
+
+    def create_mock_request(self, body_dict, headers=None, method="POST"):
         """Helper to create mock HTTP request."""
         mock_req = Mock(spec=func.HttpRequest)
         mock_req.get_json.return_value = body_dict
+        mock_req.method = method
+        
+        # Set up headers
+        if headers is None:
+            # Default headers include valid API key
+            final_headers = {"X-API-Key": "test-api-key"}
+        else:
+            # Use provided headers exactly as given
+            final_headers = headers
+        
+        # Create a mock headers object with get method
+        mock_headers = Mock()
+        mock_headers.get = lambda key, default=None: final_headers.get(key, default)
+        mock_req.headers = mock_headers
         return mock_req
     
     def create_mock_transcript_snippet(self, text):
@@ -213,6 +275,7 @@ class TestFuncYtbCaption:
         transcript_list.find_generated_transcript = Mock()
         return transcript_list
     
+    @patch.dict('os.environ', {'API_KEY': 'test-api-key'})
     @patch('function_app.YouTubeTranscriptApi')
     def test_func_ytb_caption_success(self, mock_api_class):
         """Test successful transcript retrieval with specified language."""
@@ -262,9 +325,10 @@ class TestFuncYtbCaption:
         mock_api.list.assert_called_once_with("dQw4w9WgXcQ")
         mock_transcript_list.find_transcript.assert_called_once_with(["en"])
     
+    @patch.dict('os.environ', {'API_KEY': 'test-api-key'})
     def test_func_ytb_caption_missing_body(self):
         """Test with missing request body."""
-        mock_req = Mock(spec=func.HttpRequest)
+        mock_req = self.create_mock_request({})
         mock_req.get_json.return_value = None
         
         response = func_ytb_caption(mock_req)
@@ -273,6 +337,7 @@ class TestFuncYtbCaption:
         response_data = json.loads(response.get_body())
         assert "Request body is required" in response_data["error"]
     
+    @patch.dict('os.environ', {'API_KEY': 'test-api-key'})
     def test_func_ytb_caption_missing_url(self):
         """Test with missing URL parameter."""
         request_body = {"chunk_size": 5000}
@@ -284,6 +349,7 @@ class TestFuncYtbCaption:
         response_data = json.loads(response.get_body())
         assert "Missing 'url' parameter" in response_data["error"]
     
+    @patch.dict('os.environ', {'API_KEY': 'test-api-key'})
     def test_func_ytb_caption_invalid_url(self):
         """Test with invalid YouTube URL."""
         request_body = {"url": "https://example.com/video"}
@@ -295,9 +361,10 @@ class TestFuncYtbCaption:
         response_data = json.loads(response.get_body())
         assert "Invalid YouTube URL" in response_data["error"]
     
+    @patch.dict('os.environ', {'API_KEY': 'test-api-key'})
     def test_func_ytb_caption_invalid_json(self):
         """Test with invalid JSON payload."""
-        mock_req = Mock(spec=func.HttpRequest)
+        mock_req = self.create_mock_request({})
         mock_req.get_json.side_effect = json.JSONDecodeError("Invalid JSON", "", 0)
         
         response = func_ytb_caption(mock_req)
@@ -306,6 +373,7 @@ class TestFuncYtbCaption:
         response_data = json.loads(response.get_body())
         assert "Invalid JSON payload" in response_data["error"]
     
+    @patch.dict('os.environ', {'API_KEY': 'test-api-key'})
     @patch('function_app.YouTubeTranscriptApi')
     def test_func_ytb_caption_no_transcript_found(self, mock_api_class):
         """Test when no transcript is found."""
@@ -327,6 +395,7 @@ class TestFuncYtbCaption:
         response_data = json.loads(response.get_body())
         assert "No transcript available" in response_data["error"]
     
+    @patch.dict('os.environ', {'API_KEY': 'test-api-key'})
     @patch('function_app.YouTubeTranscriptApi')
     def test_func_ytb_caption_video_unavailable(self, mock_api_class):
         """Test when video is unavailable."""
@@ -343,6 +412,7 @@ class TestFuncYtbCaption:
         response_data = json.loads(response.get_body())
         assert "Video is unavailable" in response_data["error"]
     
+    @patch.dict('os.environ', {'API_KEY': 'test-api-key'})
     @patch('function_app.YouTubeTranscriptApi')
     def test_func_ytb_caption_transcripts_disabled(self, mock_api_class):
         """Test when transcripts are disabled."""
@@ -359,6 +429,7 @@ class TestFuncYtbCaption:
         response_data = json.loads(response.get_body())
         assert "Transcripts are disabled" in response_data["error"]
     
+    @patch.dict('os.environ', {'API_KEY': 'test-api-key'})
     @patch('function_app.YouTubeTranscriptApi')
     def test_func_ytb_caption_with_language_list(self, mock_api_class):
         """Test with language parameter as list."""
@@ -388,6 +459,7 @@ class TestFuncYtbCaption:
         mock_api.list.assert_called_once_with("dQw4w9WgXcQ")
         mock_transcript_list.find_transcript.assert_called_once_with(["de", "en"])
     
+    @patch.dict('os.environ', {'API_KEY': 'test-api-key'})
     @patch('function_app.YouTubeTranscriptApi')
     def test_func_ytb_caption_default_parameters(self, mock_api_class):
         """Test with default parameters (auto language detection)."""
@@ -419,6 +491,7 @@ class TestFuncYtbCaption:
         mock_api.list.assert_called_once_with("dQw4w9WgXcQ")
         mock_transcript_list.find_manually_created_transcript.assert_called_once_with(["en"])
     
+    @patch.dict('os.environ', {'API_KEY': 'test-api-key'})
     @patch('function_app.YouTubeTranscriptApi')
     def test_func_ytb_caption_pagination(self, mock_api_class):
         """Test pagination functionality."""
@@ -455,6 +528,7 @@ class TestFuncYtbCaption:
         assert response_data["next_index"] == 2
         assert response_data["total_chunks"] == 10  # 100 chars / 10 chars per chunk
     
+    @patch.dict('os.environ', {'API_KEY': 'test-api-key'})
     @patch('function_app.YouTubeTranscriptApi')
     def test_func_ytb_caption_cors_headers(self, mock_api_class):
         """Test that CORS headers are set."""
@@ -481,6 +555,7 @@ class TestFuncYtbCaption:
         assert response.headers.get('Access-Control-Allow-Origin') == '*'
 
 
+    @patch.dict('os.environ', {'API_KEY': 'test-api-key'})
     @patch('function_app.YouTubeTranscriptApi')
     def test_func_ytb_caption_auto_language_fallback(self, mock_api_class):
         """Test automatic language fallback when no language specified."""
@@ -518,6 +593,7 @@ class TestFuncYtbCaption:
         assert response_data["selected_language_code"] == "es"
         assert response_data["is_generated"] == True
     
+    @patch.dict('os.environ', {'API_KEY': 'test-api-key'})
     @patch('function_app.YouTubeTranscriptApi')
     def test_func_ytb_caption_translation_fallback(self, mock_api_class):
         """Test translation fallback when requested language not directly available."""

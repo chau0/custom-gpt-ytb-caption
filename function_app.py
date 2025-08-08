@@ -57,6 +57,36 @@ def func_ytb_caption(req: func.HttpRequest) -> func.HttpResponse:
     """Azure Function to retrieve YouTube captions with modern API."""
     logging.info('YouTube caption function processed a request.')
 
+    # Handle CORS preflight requests
+    if req.method == "OPTIONS":
+        response = func.HttpResponse("", status_code=200)
+        response.headers['Access-Control-Allow-Origin'] = '*'
+        response.headers['Access-Control-Allow-Methods'] = 'POST, OPTIONS'
+        response.headers['Access-Control-Allow-Headers'] = 'Content-Type, X-API-Key'
+        return response
+
+    # API Key authentication
+    api_key = req.headers.get('X-API-Key') or req.headers.get('x-api-key')
+    server_api_key = os.getenv("API_KEY")
+    
+    if not server_api_key:
+        return func.HttpResponse(
+            json.dumps({"error": "API key not configured on server."}),
+            status_code=500, mimetype="application/json"
+        )
+    
+    if not api_key:
+        return func.HttpResponse(
+            json.dumps({"error": "API key is required. Please provide X-API-Key header."}),
+            status_code=401, mimetype="application/json"
+        )
+    
+    if api_key != server_api_key:
+        return func.HttpResponse(
+            json.dumps({"error": "Invalid API key."}),
+            status_code=401, mimetype="application/json"
+        )
+
     try:
         body = req.get_json()
         if not body:
